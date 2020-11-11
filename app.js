@@ -1,5 +1,6 @@
 //jshint esversion:
 require('dotenv').config()
+const md5 = require('md5');
 const express = require('express');
 const ejs = require('ejs');
 const bodyParser = require('body-parser');
@@ -20,9 +21,9 @@ const userSchema = new mongoose.Schema({
   password: String
 })
 
-
-console.log(process.env.SECRET);
-userSchema.plugin(mongooseEncryption, {secret: process.env.SECRET , encryptedFields: ["password"] })
+//------------------------ Using DOTENV to store encryption key-------------------//
+// console.log(process.env.SECRET);
+// userSchema.plugin(mongooseEncryption, {secret: process.env.SECRET , encryptedFields: ["password"] })
 
 const User = new mongoose.model("user", userSchema)
 
@@ -38,15 +39,17 @@ app.route("/login")
   })
 
   .post(function(req, res) {
+    let email = req.body.username
+    let password = md5(req.body.password)
     User.findOne({
-      email: req.body.username
+      email: email
     }, function(err, foundUser) {
       if (!err) {
         if (!foundUser) {
             console.log("Incorrect Credential !")
           res.redirect("/login")
         } else {
-          if (foundUser.password === req.body.password) {
+          if (foundUser.password === password) {
             res.render("secrets")
           } else {
               console.log(("Incorrect Credentials !!!\nPlease Try again"))
@@ -68,7 +71,7 @@ app.route("/register")
   .post(function(req, res) {
     const newUser = new User({
       email: req.body.username ,
-      password: req.body.password
+      password: md5(req.body.password)
     })
     console.log(newUser);
     newUser.save(function(err) {
