@@ -8,10 +8,12 @@
   "author": "Naval",
   "license": "ISC",
   "dependencies": {
+    "bcrypt": "^3.0.8",
     "body-parser": "^1.19.0",
     "dotenv": "^8.2.0",
     "ejs": "^3.1.5",
     "express": "^4.17.1",
+    "md5": "^2.3.0",
     "mongoose": "^5.10.13",
     "mongoose-encryption": "^2.0.2"
   },

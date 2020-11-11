@@ -1,11 +1,13 @@
 //jshint esversion:
-require('dotenv').config()
-const md5 = require('md5');
+// require('dotenv').config()
+// const md5 = require('md5');
 const express = require('express');
 const ejs = require('ejs');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
-const mongooseEncryption = require('mongoose-encryption');
+// const mongooseEncryption = require('mongoose-encryption');
+const bcrypt = require('bcrypt');
+
 
 const app = express()
 app.set('view engine', 'ejs')
@@ -20,6 +22,9 @@ const userSchema = new mongoose.Schema({
   email: String,
   password: String
 })
+
+
+const roundsOfSalting = 10
 
 //------------------------ Using DOTENV to store encryption key-------------------//
 // console.log(process.env.SECRET);
@@ -40,7 +45,7 @@ app.route("/login")
 
   .post(function(req, res) {
     let email = req.body.username
-    let password = md5(req.body.password)
+    let password = req.body.password
     User.findOne({
       email: email
     }, function(err, foundUser) {
@@ -49,12 +54,14 @@ app.route("/login")
             console.log("Incorrect Credential !")
           res.redirect("/login")
         } else {
-          if (foundUser.password === password) {
-            res.render("secrets")
-          } else {
-              console.log(("Incorrect Credentials !!!\nPlease Try again"))
-            res.redirect("/login")
-          }
+          bcrypt.compare(password, foundUser.password, function(err, result){
+            if (result===true) {
+              res.render("secrets")
+            } else {
+                console.log(("Incorrect Credentials !!!\nPlease Try again"))
+              res.redirect("/login")
+            }
+          })
         }
       } else {
         console.log(err + "  \nERORR WHILE VRIFING CREDENTIALS\n");
@@ -69,20 +76,24 @@ app.route("/register")
   })
 
   .post(function(req, res) {
-    const newUser = new User({
-      email: req.body.username ,
-      password: md5(req.body.password)
-    })
-    console.log(newUser);
-    newUser.save(function(err) {
-      if (!err) {
-        console.log("Registration Sucusess !")
-        console.log(err);
-        res.render("login")
-      } else {
-        console.log(err)
-      }
-    })
+  let password = req.body.password
+   bcrypt.hash(password, roundsOfSalting, function (err, hash){
+     const newUser = new User({
+       email: req.body.username ,
+       password: hash
+     })
+     console.log(newUser+"\n IS Being saved ! !");
+     newUser.save(function(err) {
+       if (!err) {
+         console.log("Registration Sucusess !")
+         res.render("login")
+       } else {
+         console.log(err)
+       }
+     })
+   })
+
+
   })
 
 app.listen(8080, function(req, res) {
