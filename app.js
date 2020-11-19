@@ -1,9 +1,5 @@
 //jshint esversion:
 require('dotenv').config()
-// const md5 = require('md5');
-// const mongooseEncryption = require('mongoose-encryption');
-// const bcrypt = require('bcrypt')
-
 
 const express = require('express');
 const ejs = require('ejs');
@@ -13,6 +9,8 @@ const passport = require('passport')
 const passportLocal = require('passport-local')
 const session = require('express-session')
 const passportLocalMongoose = require('passport-local-mongoose');
+const findOrCreate = require('mongoose-findorcreate')
+var GoogleStrategy = require( 'passport-google-oauth2' ).Strategy;
 
 const app = express()
 app.set('view engine', 'ejs')
@@ -39,25 +37,57 @@ mongoose.connect("mongodb://localhost:27017/UsersDB", {
   useCreateIndex: true
 })
 
+//------------Creating Schemas For Collections--------------//
 const userSchema = new mongoose.Schema({
   email: String,
-  password: String
+  password: String,
+  googleId: String,
+  secret: String
 })
 
+//-------------Adding some plugins---------------//
 userSchema.plugin(passportLocalMongoose)
+userSchema.plugin(findOrCreate)
+// userSchema.plugin(mongooseEncryption, {secret: process.env.SECRET , encryptedFields: ["password"] })
+
 
 const roundsOfSalting = 10
-
-
-// userSchema.plugin(mongooseEncryption, {secret: process.env.SECRET , encryptedFields: ["password"] })
 
 const User = new mongoose.model("user", userSchema)
 
 passport.use(User.createStrategy())
 
-// -----------Setting up cookie--------------//
-passport.serializeUser(User.serializeUser())
-passport.deserializeUser(User.deserializeUser())
+
+// -----------Setting up cookie------------(Works with any type of Strategy)-----------//
+passport.serializeUser(function(user, done) {      //genrating a cookie
+  done(null, user.id);
+});
+
+passport.deserializeUser(function(id, done) {     //Opening a cookie
+  User.findById(id, function(err, user) {
+    done(err, user);
+  });
+});
+
+
+//------------------Only Works if Authetication is local-----------------//
+// passport.serializeUser(User.serializeUser())
+// passport.deserializeUser(User.deserializeUser())
+
+
+// --------google Auth2.0 GoogleStrategy----------//
+passport.use(new GoogleStrategy({
+    clientID: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
+    callbackURL: "http://localhost:8080/auth/secrets"
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    console.log(profile);
+    User.findOrCreate({ googleId: profile.id }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+));
 
 app.route("/")
   .get(function(req, res) {
@@ -80,13 +110,16 @@ app.route("/login")
         res.redirect("/login")
       } else {
         passport.authenticate("local")(req, res, function() {
-          console.log("You reached login/Authenticating");
           res.redirect("/secrets")
         })
       }
     })
   })
 
+app.get("/logout", function(req, res){
+  req.logout()
+  res.redirect("/")
+})
 
 
 app.route("/register")
@@ -100,46 +133,75 @@ app.route("/register")
     }, req.body.password, function(err, user) {
       if (err) {
         console.log(err)
+        console.log("There is err while restering a local user");
         res.redirect("/register")
       } else {
-        passport.authenticate("local")(req, res,
-          function() {
-            console.log("You reached regeister/auth");
             res.redirect("/secrets")
-          });
-      }
-    })
-
-
-
-
-
-    // bcrypt.hash(password, roundsOfSalting, function (err, hash){
-    //   const newUser = new User({
-    //     email: req.body.username ,
-    //     password: hash
-    //   })
-    //   console.log(newUser+"\n IS Being saved ! !");
-    //   newUser.save(function(err) {
-    //     if (!err) {
-    //       console.log("Registration Sucusess !")
-    //       res.render("login")
-    //     } else {
-    //       console.log(err)
-    //     }
-    //   })
-    // })
+          }
+      })
   })
 
 
-app.route("/secrets").get(function(req, res) {
-  if (req.isAuthenticated()) {
-    res.render("secrets")
+app.get("/secrets", function(req, res){
+  User.find({secret: {$exists: true}}, function(err, foundSecrets){
+  if (!err) {
+    res.render("secrets", {
+      usersSecretes: foundSecrets
+    })
   } else {
+    console.log(err);
+  }
+  })
+
+})
+
+app.get("/submit", function(req, res){
+  if (req.isAuthenticated()) {
+      res.render("submit")
+    } else {
     res.redirect("/login")
   }
+  })
+
+app.post("/submit", function(req, res){
+  const submittedSecret = req.body.secret
+  const userid = req.user._id
+  User.findById(userid, function(err, founduser){
+    if (!err) {
+      if (founduser) {
+        founduser.secret = submittedSecret
+        founduser.save()
+      } else {
+        console.log("No user Found !");
+      }
+    }else{
+       console.log(err);
+
+       }
+  })
+
+  res.redirect("/secrets")
 })
+
+app.route("/auth/google")
+.get(
+passport.authenticate("google",  { scope: ['profile'] })
+);
+
+app.route("/auth/secrets")
+.get(
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  function(req, res) {
+    // Successful authentication, redirect to secrets.
+    res.redirect('/secrets');
+  });
+
 
 app.listen(8080, function(req, res) {
   console.log("Server is running At Port 8080");
 })
+
+
+
+
+//     http://localhost:8080/auth/secrets
