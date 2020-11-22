@@ -1,6 +1,5 @@
 //jshint esversion:
 require('dotenv').config()
-
 const express = require('express');
 const ejs = require('ejs');
 const bodyParser = require('body-parser');
@@ -10,7 +9,9 @@ const passportLocal = require('passport-local')
 const session = require('express-session')
 const passportLocalMongoose = require('passport-local-mongoose');
 const findOrCreate = require('mongoose-findorcreate')
-var GoogleStrategy = require( 'passport-google-oauth2' ).Strategy;
+const GoogleStrategy = require( 'passport-google-oauth2' ).Strategy;
+const FacebookStrategy = require('passport-facebook')
+
 
 const app = express()
 app.set('view engine', 'ejs')
@@ -42,14 +43,13 @@ const userSchema = new mongoose.Schema({
   email: String,
   password: String,
   googleId: String,
-  secret: String
+  secret: String,
+  facebookProfileId: String
 })
 
 //-------------Adding some plugins---------------//
 userSchema.plugin(passportLocalMongoose)
 userSchema.plugin(findOrCreate)
-// userSchema.plugin(mongooseEncryption, {secret: process.env.SECRET , encryptedFields: ["password"] })
-
 
 const roundsOfSalting = 10
 
@@ -70,24 +70,33 @@ passport.deserializeUser(function(id, done) {     //Opening a cookie
 });
 
 
-//------------------Only Works if Authetication is local-----------------//
-// passport.serializeUser(User.serializeUser())
-// passport.deserializeUser(User.deserializeUser())
-
-
-// --------google Auth2.0 GoogleStrategy----------//
+// --------google Auth2.0 GoogleStrategy--------------//
 passport.use(new GoogleStrategy({
     clientID: process.env.CLIENT_ID,
     clientSecret: process.env.CLIENT_SECRET,
     callbackURL: "http://localhost:8080/auth/secrets"
   },
   function(accessToken, refreshToken, profile, cb) {
-    console.log(profile);
+    // console.log(profile.displayName);
     User.findOrCreate({ googleId: profile.id }, function (err, user) {
       return cb(err, user);
     });
   }
 ));
+
+//---------Facebook Auth2.0 Facebook Strategy-------//
+passport.use(new FacebookStrategy({
+    clientID: process.env.FB_ID,
+    clientSecret: process.env.FB_SECRET,
+    callbackURL: "http://localhost:8080/auth/facebook/callback"
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    User.findOrCreate({ facebookProfileId: profile.id }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+));
+
 
 app.route("/")
   .get(function(req, res) {
@@ -133,7 +142,7 @@ app.route("/register")
     }, req.body.password, function(err, user) {
       if (err) {
         console.log(err)
-        console.log("There is err while restering a local user");
+        console.log("There is err while registering a local user");
         res.redirect("/register")
       } else {
             res.redirect("/secrets")
@@ -193,9 +202,20 @@ app.route("/auth/secrets")
   passport.authenticate('google', { failureRedirect: '/login' }),
   function(req, res) {
     // Successful authentication, redirect to secrets.
+    console.log("Logged in with google");
     res.redirect('/secrets');
   });
 
+app.get('/auth/facebook',
+  passport.authenticate('facebook'));
+
+app.get('/auth/facebook/callback',
+  passport.authenticate('facebook', { failureRedirect: '/login' }),
+  function(req, res) {
+      console.log("Logged in with FaceBook");
+   // Successful authentication, redirect secrets.
+    res.redirect("/secrets");
+});
 
 app.listen(8080, function(req, res) {
   console.log("Server is running At Port 8080");
